@@ -48,7 +48,9 @@ class WatcherDaemonController extends \vyants\daemon\controllers\WatcherDaemonCo
 }
 ```
 2. No one ckeck watcher. Watcher must every time runnig, then add crontab:
-```* * * * * /path/to/yii/project/yiic watcher-daemon --demonize=1```
+```
+* * * * * /path/to/yii/project/yiic watcher-daemon --demonize=1
+```
 Watcher can't start twice, only one instance can work in the one moment.
 
 3. Well done.
