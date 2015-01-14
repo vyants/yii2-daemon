@@ -47,7 +47,7 @@ class WatcherDaemonController extends \vyants\daemon\controllers\WatcherDaemonCo
     }
 }
 ```
-2. No one ckeck watcher. Watcher must every time runnig, then add crontab:
+2. No one check watcher. Watcher must every time running. Add it to crontab:
 ```
 * * * * * /path/to/yii/project/yiic watcher-daemon --demonize=1
 ```
