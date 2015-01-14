@@ -12,6 +12,13 @@ use yii\helpers\Console;
  */
 abstract class DaemonController extends Controller
 {
+
+    const EVENT_BEFORE_TASK = "event_before_task";
+    const EVENT_AFTER_TASK = "event_after_task";
+
+    const EVENT_BEFORE_ITERATION = "event_before_iteration";
+    const EVENT_AFTER_ITERATION = "event_after_iteration";
+
     /**
      * @var $demonize boolean Run controller as Daemon
      * @default false
@@ -58,30 +65,46 @@ abstract class DaemonController extends Controller
      */
     protected $sleep = 5;
 
+    protected $pidDir = "@runtime/daemons/pids";
+    protected $logDir = "@runtime/daemons/logs";
+
     /**
      * Init function
      */
     public function init()
     {
+        parent::init();
+
         //set PCNTL signal handlers
         pcntl_signal(SIGTERM, ['vyants\daemon\DaemonController', 'onSignal']);
         pcntl_signal(SIGHUP, ['vyants\daemon\DaemonController', 'onSignal']);
         pcntl_signal(SIGUSR1, ['vyants\daemon\DaemonController', 'onSignal']);
         pcntl_signal(SIGCHLD, ['vyants\daemon\DaemonController', 'onSignal']);
 
-        //Настраиваем Logger Yii на логгирование в файлы по имени демона
+        $this->initLogger();
+
+
+    }
+
+    /**
+     * Adjusting logger. You can override it.
+     */
+    protected function initLogger() {
         $targets = \Yii::$app->getLog()->targets;
         foreach ($targets as $name => $target) {
             if ($name != 'daemon') {
                 $target->enabled = false;
-            } else {
-                $target->logFile = '@runtime/logs/' . $this->shortClassName() . '.log';
-                $target->init();
             }
         }
-        if (!file_exists(\Yii::$app->params['pidDir'])) {
-            mkdir(\Yii::$app->params['pidDir'], 0777, true);
+        if(!isset($targets['daemon'])) {
+            $config = [
+                'levels' => ['error', 'warning', 'trace'],
+                'logFile' => \Yii::getAlias($this->pidDir) . DIRECTORY_SEPARATOR . $this->shortClassName() . '.log'
+            ];
+            $targets['daemon'] = new \yii\log\FileTarget($config);
+            \Yii::$app->getLog()->targets = $targets;
         }
+        $targets['daemon']->init();
     }
 
     /**
@@ -104,27 +127,22 @@ abstract class DaemonController extends Controller
         if ($this->demonize) {
             $pid = pcntl_fork();
             if ($pid == -1) {
-                $this->halt(self::EXIT_CODE_ERROR, 'Не удалось демонизировать процесс. Что-то не так с pcntl_fork().');
+                $this->halt(self::EXIT_CODE_ERROR, 'pcntl_fork() rise error');
             } elseif ($pid) {
-                //мы в родительском процессе, его необходимо потушить
                 $this->halt(self::EXIT_CODE_NORMAL);
             } else {
-                //мы в дочернем процессе, необходимо сделать его главным и отвязаться от консоли
-                //делаем процесс основным в сесиии
                 posix_setsid();
-
-                //закрываем потоки
+                //close std streams (unlink console)
                 fclose(STDIN);
                 fclose(STDOUT);
                 fclose(STDERR);
-                //открываем 3 потока в dev/null и оставляем их в объекте, они автоматов станут стандартными
                 $this->STDIN = fopen('/dev/null', 'r');
                 $this->STDOUT = fopen('/dev/null', 'ab');
                 $this->STDERR = fopen('/dev/null', 'ab');
             }
         }
         //мы либо в дочернем процессе, либо это не демон, в любом случае, стартуем итератор
-        return $this->start();
+        return $this->loop();
     }
 
     /**
@@ -169,42 +187,45 @@ abstract class DaemonController extends Controller
      */
     final private function loop()
     {
-        \Yii::trace('Daemon ' . $this->shortClassName() . ' pid ' . getmypid() . ' started.');
-        //stop iteration if memory limit is riched or daemon get stop flag
-        while (!$this->stopFlag && (memory_get_usage() < $this->memoryLimit)) {
-            $jobs = $this->defineJobs();
-            if ($jobs && count($jobs)) {
-                while (($job = $this->defineJobExtractor($jobs)) !== null) {
-                    //if no free workers, wait
-                    if (count($this->currentJobs) >= $this->maxChildProcesses) {
-                        \Yii::trace('Max child proccess is reached. Wait.');
-                        while (count($this->currentJobs) >= $this->maxChildProcesses) {
-                            sleep(1);
-                            pcntl_signal_dispatch();
+        if (file_put_contents($this->getPidPath(), getmypid())) {
+            $this->parentPID = getmypid();
+            \Yii::trace('Daemon ' . $this->shortClassName() . ' pid ' . getmypid() . ' started.');
+            while (!$this->stopFlag && (memory_get_usage() < $this->memoryLimit)) {
+                $jobs = $this->defineJobs();
+                if ($jobs && count($jobs)) {
+                    while (($job = $this->defineJobExtractor($jobs)) !== null) {
+                        //if no free workers, wait
+                        if (count($this->currentJobs) >= $this->maxChildProcesses) {
+                            \Yii::trace('Max child proccess is reached. Wait.');
+                            while (count($this->currentJobs) >= $this->maxChildProcesses) {
+                                sleep(1);
+                                pcntl_signal_dispatch();
+                            }
+                            \Yii::trace('Free workers found: '
+                                . $this->maxChildProcesses - count($this->currentJobs) . ' worker(s). Delegate tasks.');
                         }
-                        \Yii::trace('Free workers found: '
-                            . $this->maxChildProcesses - count($this->currentJobs) . ' worker(s). Delegate tasks.');
+                        pcntl_signal_dispatch();
+                        $this->run($job);
                     }
-                    pcntl_signal_dispatch();
-                    $this->run($job);
+                } else {
+                    sleep($this->sleep);
                 }
-            } else {
-                sleep($this->sleep);
+                pcntl_signal_dispatch();
             }
-            pcntl_signal_dispatch();
+            if (memory_get_usage() < $this->memoryLimit) {
+                \Yii::warning('Daemon ' . $this->shortClassName() . ' pid ' .
+                    getmypid() . ' is reached memory limit ' . $this->memoryLimit .
+                    ', memory usage: ' . memory_get_usage()
+                );
+            }
+
+            \Yii::trace('Daemon ' . $this->shortClassName() . ' pid ' . getmypid() . ' is stopped now.');
+
+            unlink(\Yii::$app->params['pidDir'] . DIRECTORY_SEPARATOR . $this->shortClassName());
+
+            return self::EXIT_CODE_NORMAL;
         }
-        if (memory_get_usage() < $this->memoryLimit) {
-            \Yii::warning('Daemon ' . $this->shortClassName() . ' pid ' .
-                getmypid() . ' is reached memory limit ' . $this->memoryLimit .
-                ', memory usage: ' . memory_get_usage()
-            );
-        }
-
-        \Yii::trace('Daemon ' . $this->shortClassName() . ' pid ' . getmypid() . ' is stopped now.');
-
-        unlink(\Yii::$app->params['pidDir'] . DIRECTORY_SEPARATOR . $this->shortClassName());
-
-        return self::EXIT_CODE_NORMAL;
+        $this->halt(self::EXIT_CODE_ERROR, 'Can\'t create pid file '.$this->getPidPath());
     }
 
     /**
@@ -214,16 +235,7 @@ abstract class DaemonController extends Controller
      */
     final public function start()
     {
-        if (file_put_contents(\Yii::$app->params['pidDir'] . DIRECTORY_SEPARATOR . $this->shortClassName(),
-            getmypid())) {
-            //сохраняем текущий pid как родительский
-            $this->parentPID = getmypid();
-            return $this->loop();
-        } else {
-            $this->halt(self::EXIT_CODE_ERROR, 'Не удалось создать PID файл');
-        }
-        //программа не должна сюда дойти
-        return self::EXIT_CODE_ERROR;
+
     }
 
     /**
@@ -277,34 +289,39 @@ abstract class DaemonController extends Controller
      */
     final public function run($job)
     {
+
         if ($this->isMultiInstance) {
-            //Если демон мультиинстасевый - форкаем и выполняем такс в дочернем процессе
             $pid = pcntl_fork();
             if ($pid == -1) {
-                // Не удалось создать дочерний процесс
                 return false;
             } elseif ($pid) {
-                // Этот код выполнится родительским процессом
                 $this->currentJobs[$pid] = true;
             } else {
-                //после выполнения задания дочерний процесс должен умереть
+                //child process must die
+                $this->trigger(self::EVENT_BEFORE_TASK);
                 if ($this->doJob($job)) {
+                    $this->trigger(self::EVENT_AFTER_TASK);
                     $this->halt(self::EXIT_CODE_NORMAL);
                 } else {
-                    $this->halt(self::EXIT_CODE_ERROR, 'Дочерний процесс #' . $pid . ' завершился ошибкой.');
+                    $this->trigger(self::EVENT_AFTER_TASK);
+                    $this->halt(self::EXIT_CODE_ERROR, 'Child process #' . $pid . ' return error.');
                 }
             }
+
             return true;
         } else {
-            //для обычных демонов выполняем такс здесь же
-            return $this->doJob($job);
+            $this->trigger(self::EVENT_BEFORE_TASK);
+            $status = $this->doJob($job);
+            $this->trigger(self::EVENT_AFTER_TASK);
+
+            return $status;
         }
     }
 
     /**
      * Stop process and show or write message
      *
-     * @param $code int код завершения 0|1
+     * @param $code int код завершения -1|0|1
      * @param $message string сообщение
      */
     protected function halt($code, $message = null)
@@ -322,7 +339,9 @@ abstract class DaemonController extends Controller
                 $this->writeConsole($message);
             }
         }
-        exit($code);
+        if($code !== -1) {
+            exit($code);
+        }
     }
 
     /**
@@ -351,4 +370,13 @@ abstract class DaemonController extends Controller
 
         return $classname;
     }
+
+    public function getPidPath(){
+        $dir = \Yii::getAlias($this->pidDir);
+        if (!file_exists($dir)) {
+            mkdir($dir, 0744, true);
+        }
+        return $dir . DIRECTORY_SEPARATOR . $this->shortClassName();
+    }
+
 }

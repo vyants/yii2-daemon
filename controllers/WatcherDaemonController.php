@@ -5,17 +5,28 @@ namespace vyants\daemon\controllers;
 use vyants\daemon\DaemonController;
 
 /**
- * watcher-daemon - check another daemons and run it
+ * watcher-daemon - check another daemons and run it if need
  *
  * @author Vladimir Yants <vladimir.yants@gmail.com>
  */
-class WatcherDaemonController extends DaemonController
+abstract class WatcherDaemonController extends DaemonController
 {
+    /**
+     * Daemons for check
+     * [
+     *  ['className' => 'OneDaemonController', 'enabled' => true]
+     *  ...
+     *  ['className' => 'AnotherDaemonController', 'enabled' => false]
+     * ]
+     * @var $daemonsList Array
+     */
+    public $daemonsList = [];
+
     public function init()
     {
-        $pidfile = \Yii::$app->params['pidDir'] . DIRECTORY_SEPARATOR . $this->shortClassName();
-        if (file_exists($pidfile)) {
-            $pid = file_get_contents($pidfile);
+        $pidFile = \Yii::$app->params['pidDir'] . DIRECTORY_SEPARATOR . $this->shortClassName();
+        if (file_exists($pidFile)) {
+            $pid = file_get_contents($pidFile);
             exec("ps -p $pid", $output);
             if (count($output) > 1) {
                 $this->halt(self::EXIT_CODE_ERROR, 'Another Watcher already running.');
@@ -33,26 +44,25 @@ class WatcherDaemonController extends DaemonController
     protected function doJob($job)
     {
         $output = [];
-        $pidfile = \Yii::$app->params['pidDir'] . DIRECTORY_SEPARATOR . $job['className'];
+        $pidfile = \Yii::getAlias($this->pidDir) . DIRECTORY_SEPARATOR . $job['className'];
 
-        \Yii::trace('Проверяем демон '.$job['className']);
+        \Yii::trace('Check daemon '.$job['className']);
         if (file_exists($pidfile)) {
             $pid = file_get_contents($pidfile);
-            exec("ps -p $pid", $output);
-            if (count($output) > 1) {
+            if ($this->isProcessRunning($pid)) {
                 if (current($job)['enabled']) {
-                    \Yii::trace('Демон ' . $job['className']. ' работает, никаких действий не трубется');
+                    \Yii::trace('Daemon ' . $job['className']. ' running and working fine');
                     return true;
                 } else {
-                    \Yii::warning('Демон ' . $job['className']. ' работает, но в отключен в конфиге. Отправляем SIGTERM сигнал');
+                    \Yii::warning('Daemon ' . $job['className']. ' running, but disabled in config. Send SIGTERM signal.');
                     posix_kill($pid, SIGTERM);
                     return true;
                 }
             }
         }
-        \Yii::trace('Нет pid-а.');
+        \Yii::trace('Daemon pid does not find.');
         if($job['enabled']) {
-            \Yii::trace('Пытаемся запустить демон ' . $job['className']. '.');
+            \Yii::trace('Try to run daemon' . $job['className']. '.');
             $command_name = strtolower(
                 preg_replace_callback('/(?<!^)(?<![A-Z])[A-Z]{1}/',
                     function ($matches) {
@@ -61,29 +71,36 @@ class WatcherDaemonController extends DaemonController
                     str_replace('Controller', '',$job['className'])
                 )
             );
-            exec("./yii $command_name --demonize=1 >/dev/null 2>&1 &");
-            $this->stderr("./yii $command_name --demonize=1 >/dev/null 2>&1 &");
-            \Yii::trace('Команда запуска демона ' . $job['className']. ' выполнена.');
+            //run daemon
+            $pid = pcntl_fork();
+            if ($pid == -1) {
+                $this->halt(self::EXIT_CODE_ERROR, 'pcntl_fork() rise error');
+            } elseif (!$pid) {
+                \Yii::trace('Daemon '.$job['className'] .' running.');
+            } else {
+                \Yii::$app->runAction("$command_name/index", ['demonize'=>1]);
+            }
+
         }
-        \Yii::trace('Проверка демона '.$job['className'] .' завершена.');
+        \Yii::trace('Daemon '.$job['className'] .' is checked.');
 
         return true;
     }
 
     /**
+     * Return array of daemons
+     *
      * @return array
      */
-    protected function defineJobs()
-    {
-        return \Yii::$app->params['watchingDaemons'];
+    protected function defineJobs() {
+        return $this->daemonsList;
     }
 
     /**
-     * @param $jobs[]
-     * @return array
+     * @param $pid
+     * @return bool
      */
-    protected function defineJobExtractor(&$jobs)
-    {
-        return parent::defineJobExtractor($jobs);
+    public function isProcessRunning($pid){
+        return !!posix_getpgid($pid);
     }
 }
