@@ -1,6 +1,6 @@
 Daemons system for Yii2
 =======================
-Extansion provides functionality for symle daemons creation and control
+Extension provides functionality for simple daemons creation and control
 
 Installation
 ------------
@@ -25,7 +25,3 @@ to the require section of your `composer.json` file.
 Usage
 -----
 
-Once the extension is installed, simply use it in your code by  :
-
-```php
-<?= \vyants\AutoloadExample::widget(); ?>```
