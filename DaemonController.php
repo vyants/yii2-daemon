@@ -199,7 +199,6 @@ abstract class DaemonController extends Controller
      */
     protected function defineJobExtractor(&$jobs)
     {
-        var_dump($jobs);
         return array_shift($jobs);
     }
 
@@ -214,18 +213,22 @@ abstract class DaemonController extends Controller
             $this->parentPID = getmypid();
             \Yii::trace('Daemon ' . $this->shortClassName() . ' pid ' . getmypid() . ' started.');
             while (!$this->stopFlag && (memory_get_usage() < $this->memoryLimit)) {
+                $this->trigger(EVENT_BEFORE_ITERATION);
                 $jobs = $this->defineJobs();
                 if ($jobs && count($jobs)) {
                     while (($job = $this->defineJobExtractor($jobs)) !== null) {
                         //if no free workers, wait
                         if (count($this->currentJobs) >= $this->maxChildProcesses) {
-                            \Yii::trace('Max child proccess is reached. Wait.');
+                            \Yii::trace('Max child proccess is reached. Waiting...');
                             while (count($this->currentJobs) >= $this->maxChildProcesses) {
                                 sleep(1);
                                 pcntl_signal_dispatch();
                             }
-                            \Yii::trace('Free workers found: '
-                                . $this->maxChildProcesses - count($this->currentJobs) . ' worker(s). Delegate tasks.');
+                            \Yii::trace(
+                                'Free workers found: ' .
+                                ($this->maxChildProcesses - count($this->currentJobs)) .
+                                ' worker(s). Delegate tasks.'
+                            );
                         }
                         pcntl_signal_dispatch();
                         $this->run($job);
@@ -234,6 +237,7 @@ abstract class DaemonController extends Controller
                     sleep($this->sleep);
                 }
                 pcntl_signal_dispatch();
+                $this->trigger(EVENT_AFTER_ITERATION);
             }
             if (memory_get_usage() < $this->memoryLimit) {
                 \Yii::warning('Daemon ' . $this->shortClassName() . ' pid ' .
