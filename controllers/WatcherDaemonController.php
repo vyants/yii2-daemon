@@ -36,14 +36,13 @@ abstract class WatcherDaemonController extends DaemonController
     }
 
     /**
-     * Тело обработки очереди
+     * Job processing body
      *
-     * @param $job[]
+     * @param $job array
      * @return boolean
      */
     protected function doJob($job)
     {
-        $output = [];
         $pidfile = \Yii::getAlias($this->pidDir) . DIRECTORY_SEPARATOR . $job['className'];
 
         \Yii::trace('Check daemon '.$job['className']);
@@ -62,7 +61,7 @@ abstract class WatcherDaemonController extends DaemonController
         }
         \Yii::trace('Daemon pid does not find.');
         if($job['enabled']) {
-            \Yii::trace('Try to run daemon' . $job['className']. '.');
+            \Yii::trace('Try to run daemon ' . $job['className']. '.');
             $command_name = strtolower(
                 preg_replace_callback('/(?<!^)(?<![A-Z])[A-Z]{1}/',
                     function ($matches) {
@@ -93,6 +92,7 @@ abstract class WatcherDaemonController extends DaemonController
      * @return array
      */
     protected function defineJobs() {
+        sleep($this->sleep);
         return $this->daemonsList;
     }
 

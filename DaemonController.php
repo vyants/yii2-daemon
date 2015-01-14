@@ -2,6 +2,7 @@
 
 namespace vyants\daemon;
 
+use yii\base\NotSupportedException;
 use yii\console\Controller;
 use yii\helpers\Console;
 
@@ -13,8 +14,8 @@ use yii\helpers\Console;
 abstract class DaemonController extends Controller
 {
 
-    const EVENT_BEFORE_TASK = "event_before_task";
-    const EVENT_AFTER_TASK = "event_after_task";
+    const EVENT_BEFORE_JOB = "EVENT_BEFORE_JOB";
+    const EVENT_AFTER_JOB = "EVENT_AFTER_JOB";
 
     const EVENT_BEFORE_ITERATION = "event_before_iteration";
     const EVENT_AFTER_ITERATION = "event_after_iteration";
@@ -76,14 +77,12 @@ abstract class DaemonController extends Controller
         parent::init();
 
         //set PCNTL signal handlers
-        pcntl_signal(SIGTERM, ['vyants\daemon\DaemonController', 'onSignal']);
-        pcntl_signal(SIGHUP, ['vyants\daemon\DaemonController', 'onSignal']);
-        pcntl_signal(SIGUSR1, ['vyants\daemon\DaemonController', 'onSignal']);
-        pcntl_signal(SIGCHLD, ['vyants\daemon\DaemonController', 'onSignal']);
+        pcntl_signal(SIGTERM, ['vyants\daemon\DaemonController', 'signalHandler']);
+        pcntl_signal(SIGHUP, ['vyants\daemon\DaemonController', 'signalHandler']);
+        pcntl_signal(SIGUSR1, ['vyants\daemon\DaemonController', 'signalHandler']);
+        pcntl_signal(SIGCHLD, ['vyants\daemon\DaemonController', 'signalHandler']);
 
         $this->initLogger();
-
-
     }
 
     /**
@@ -99,12 +98,12 @@ abstract class DaemonController extends Controller
         if(!isset($targets['daemon'])) {
             $config = [
                 'levels' => ['error', 'warning', 'trace'],
-                'logFile' => \Yii::getAlias($this->pidDir) . DIRECTORY_SEPARATOR . $this->shortClassName() . '.log'
+                'logFile' => \Yii::getAlias($this->logDir) . DIRECTORY_SEPARATOR . $this->shortClassName() . '.log'
             ];
             $targets['daemon'] = new \yii\log\FileTarget($config);
             \Yii::$app->getLog()->targets = $targets;
+            \Yii::$app->getLog()->init();
         }
-        $targets['daemon']->init();
     }
 
     /**
@@ -117,8 +116,7 @@ abstract class DaemonController extends Controller
 
 
     /**
-     * Базовый экшен демона
-     * Нельзя переопределять, нельзя создавать другие
+     * Base action, you can\t override or create another actions
      *
      * @return boolean
      */
@@ -141,8 +139,29 @@ abstract class DaemonController extends Controller
                 $this->STDERR = fopen('/dev/null', 'ab');
             }
         }
-        //мы либо в дочернем процессе, либо это не демон, в любом случае, стартуем итератор
+        //run iterator
         return $this->loop();
+    }
+
+    /**
+     * Prevent non index action running
+     *
+     * @param \yii\base\Action $action
+     * @return bool
+     * @throws NotSupportedException
+     */
+    public function beforeAction($action)
+    {
+        if (parent::beforeAction($action)) {
+            if($action->id != "index") {
+                throw new NotSupportedException(
+                    "Only index action allowed in daemons. So, don't create and call another"
+                );
+            }
+            return true;
+        } else {
+            return false;
+        }
     }
 
     /**
@@ -165,7 +184,10 @@ abstract class DaemonController extends Controller
     }
 
     /**
-     * @return Array with task
+     * Extract current unprocessed jobs
+     * You can extract jobs from DB (DataProvider will be great), queue managers (ZMQ, RabbiMQ etc), redis and so on
+     *
+     * @return array with jobs
      */
     abstract protected function defineJobs();
 
@@ -177,6 +199,7 @@ abstract class DaemonController extends Controller
      */
     protected function defineJobExtractor(&$jobs)
     {
+        var_dump($jobs);
         return array_shift($jobs);
     }
 
@@ -229,17 +252,7 @@ abstract class DaemonController extends Controller
     }
 
     /**
-     * Starting
-     *
-     * @return boolean 0|1
-     */
-    final public function start()
-    {
-
-    }
-
-    /**
-     * Устанавливает stopFlag
+     * Completes the process (soft)
      */
     final public function stop()
     {
@@ -253,7 +266,7 @@ abstract class DaemonController extends Controller
      * @param null $pid
      * @param null $status
      */
-    final function onSignal($signo, $pid = null, $status = null)
+    final function signalHandler($signo, $pid = null, $status = null)
     {
         switch ($signo) {
             case SIGTERM:
@@ -264,7 +277,7 @@ abstract class DaemonController extends Controller
                 //restart, not implemented
                 break;
             case SIGUSR1:
-                //restart, not implemented
+                //user signal, not implemented
                 break;
             case SIGCHLD:
                 if (!$pid) {
@@ -298,21 +311,21 @@ abstract class DaemonController extends Controller
                 $this->currentJobs[$pid] = true;
             } else {
                 //child process must die
-                $this->trigger(self::EVENT_BEFORE_TASK);
+                $this->trigger(self::EVENT_BEFORE_JOB);
                 if ($this->doJob($job)) {
-                    $this->trigger(self::EVENT_AFTER_TASK);
+                    $this->trigger(self::EVENT_AFTER_JOB);
                     $this->halt(self::EXIT_CODE_NORMAL);
                 } else {
-                    $this->trigger(self::EVENT_AFTER_TASK);
+                    $this->trigger(self::EVENT_AFTER_JOB);
                     $this->halt(self::EXIT_CODE_ERROR, 'Child process #' . $pid . ' return error.');
                 }
             }
 
             return true;
         } else {
-            $this->trigger(self::EVENT_BEFORE_TASK);
+            $this->trigger(self::EVENT_BEFORE_JOB);
             $status = $this->doJob($job);
-            $this->trigger(self::EVENT_AFTER_TASK);
+            $this->trigger(self::EVENT_AFTER_JOB);
 
             return $status;
         }
@@ -371,7 +384,8 @@ abstract class DaemonController extends Controller
         return $classname;
     }
 
-    public function getPidPath(){
+    public function getPidPath()
+    {
         $dir = \Yii::getAlias($this->pidDir);
         if (!file_exists($dir)) {
             mkdir($dir, 0744, true);
