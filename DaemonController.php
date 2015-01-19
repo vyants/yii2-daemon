@@ -213,7 +213,7 @@ abstract class DaemonController extends Controller
             $this->parentPID = getmypid();
             \Yii::trace('Daemon ' . $this->shortClassName() . ' pid ' . getmypid() . ' started.');
             while (!$this->stopFlag && (memory_get_usage() < $this->memoryLimit)) {
-                $this->trigger(EVENT_BEFORE_ITERATION);
+                $this->trigger(self::EVENT_BEFORE_ITERATION);
                 $jobs = $this->defineJobs();
                 if ($jobs && count($jobs)) {
                     while (($job = $this->defineJobExtractor($jobs)) !== null) {
@@ -237,7 +237,7 @@ abstract class DaemonController extends Controller
                     sleep($this->sleep);
                 }
                 pcntl_signal_dispatch();
-                $this->trigger(EVENT_AFTER_ITERATION);
+                $this->trigger(self::EVENT_AFTER_ITERATION);
             }
             if (memory_get_usage() < $this->memoryLimit) {
                 \Yii::warning('Daemon ' . $this->shortClassName() . ' pid ' .
