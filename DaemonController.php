@@ -231,7 +231,7 @@ abstract class DaemonController extends Controller
                             );
                         }
                         pcntl_signal_dispatch();
-                        $this->run($job);
+                        $this->runDaemon($job);
                     }
                 } else {
                     sleep($this->sleep);
@@ -304,7 +304,7 @@ abstract class DaemonController extends Controller
      * @param string $job
      * @return boolean
      */
-    final public function run($job)
+    final public function runDaemon($job)
     {
 
         if ($this->isMultiInstance) {
