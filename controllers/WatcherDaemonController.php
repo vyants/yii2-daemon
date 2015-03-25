@@ -24,7 +24,7 @@ abstract class WatcherDaemonController extends DaemonController
 
     public function init()
     {
-        $pidFile = \Yii::$app->params['pidDir'] . DIRECTORY_SEPARATOR . $this->shortClassName();
+        $pidFile = \Yii::getAlias($this->pidDir) . DIRECTORY_SEPARATOR . $this->shortClassName();
         if (file_exists($pidFile)) {
             $pid = file_get_contents($pidFile);
             exec("ps -p $pid", $output);
