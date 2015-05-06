@@ -88,14 +88,15 @@ abstract class DaemonController extends Controller
     /**
      * Adjusting logger. You can override it.
      */
-    protected function initLogger() {
+    protected function initLogger()
+    {
         $targets = \Yii::$app->getLog()->targets;
         foreach ($targets as $name => $target) {
             if ($name != 'daemon') {
                 $target->enabled = false;
             }
         }
-        if(!isset($targets['daemon'])) {
+        if (!isset($targets['daemon'])) {
             $config = [
                 'levels' => ['error', 'warning', 'trace'],
                 'logFile' => \Yii::getAlias($this->logDir) . DIRECTORY_SEPARATOR . $this->shortClassName() . '.log'
@@ -138,7 +139,7 @@ abstract class DaemonController extends Controller
                 //streams will not be closed
                 $stdIn = fopen('/dev/null', 'r');
                 $stdOut = fopen('/dev/null', 'ab');
-                $stdErr= fopen('/dev/null', 'ab');
+                $stdErr = fopen('/dev/null', 'ab');
             }
         }
         //run iterator
@@ -155,7 +156,7 @@ abstract class DaemonController extends Controller
     public function beforeAction($action)
     {
         if (parent::beforeAction($action)) {
-            if($action->id != "index") {
+            if ($action->id != "index") {
                 throw new NotSupportedException(
                     "Only index action allowed in daemons. So, don't create and call another"
                 );
@@ -174,15 +175,12 @@ abstract class DaemonController extends Controller
      */
     public function options($actionID)
     {
-        if ($actionID == 'index') {
-            return [
-                'demonize',
-                'taskLimit',
-                'isMultiInstance',
-                'maxChildProcesses'
-            ];
-        }
-        return [];
+        return [
+            'demonize',
+            'taskLimit',
+            'isMultiInstance',
+            'maxChildProcesses'
+        ];
     }
 
     /**
@@ -254,7 +252,7 @@ abstract class DaemonController extends Controller
 
             return self::EXIT_CODE_NORMAL;
         }
-        $this->halt(self::EXIT_CODE_ERROR, 'Can\'t create pid file '.$this->getPidPath());
+        $this->halt(self::EXIT_CODE_ERROR, 'Can\'t create pid file ' . $this->getPidPath());
     }
 
     /**
@@ -358,7 +356,7 @@ abstract class DaemonController extends Controller
                 $this->writeConsole($message);
             }
         }
-        if($code !== -1) {
+        if ($code !== -1) {
             exit($code);
         }
     }
