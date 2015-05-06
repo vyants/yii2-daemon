@@ -98,7 +98,7 @@ abstract class DaemonController extends Controller
         }
         if (!isset($targets['daemon'])) {
             $config = [
-                'levels' => ['error', 'warning', 'trace'],
+                'levels' => ['error', 'warning', 'trace', 'info'],
                 'logFile' => \Yii::getAlias($this->logDir) . DIRECTORY_SEPARATOR . $this->shortClassName() . '.log'
             ];
             $targets['daemon'] = new \yii\log\FileTarget($config);
@@ -246,9 +246,9 @@ abstract class DaemonController extends Controller
                 );
             }
 
-            \Yii::trace('Daemon ' . $this->shortClassName() . ' pid ' . getmypid() . ' is stopped now.');
+            \Yii::info('Daemon ' . $this->shortClassName() . ' pid ' . getmypid() . ' is stopped now.');
 
-            unlink(\Yii::$app->params['pidDir'] . DIRECTORY_SEPARATOR . $this->shortClassName());
+            unlink($this->getPidPath());
 
             return self::EXIT_CODE_NORMAL;
         }
