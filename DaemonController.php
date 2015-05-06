@@ -214,6 +214,7 @@ abstract class DaemonController extends Controller
             \Yii::trace('Daemon ' . $this->shortClassName() . ' pid ' . getmypid() . ' started.');
             while (!self::$stopFlag && (memory_get_usage() < $this->memoryLimit)) {
                 $this->trigger(self::EVENT_BEFORE_ITERATION);
+                $this->renewConnections();
                 $jobs = $this->defineJobs();
                 if ($jobs && count($jobs)) {
                     while (($job = $this->defineJobExtractor($jobs)) !== null) {
@@ -314,6 +315,7 @@ abstract class DaemonController extends Controller
             } elseif ($pid) {
                 static::$currentJobs[$pid] = true;
             } else {
+                $this->renewConnections();
                 //child process must die
                 $this->trigger(self::EVENT_BEFORE_JOB);
                 if ($this->doJob($job)) {
@@ -358,6 +360,17 @@ abstract class DaemonController extends Controller
         }
         if ($code !== -1) {
             exit($code);
+        }
+    }
+
+    /**
+     * Renew connections
+     * @throws \yii\base\InvalidConfigException
+     * @throws \yii\db\Exception
+     */
+    protected function renewConnections() {
+        if(isset(\Yii::$app->db)) {
+            \Yii::$app->db->open();
         }
     }
 
