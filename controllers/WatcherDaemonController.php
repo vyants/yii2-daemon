@@ -22,6 +22,8 @@ abstract class WatcherDaemonController extends DaemonController
      */
     public $daemonsList = [];
 
+    public $daemonFolder = '';
+
     public function init()
     {
         $pidFile = \Yii::getAlias($this->pidDir) . DIRECTORY_SEPARATOR . $this->shortClassName();
@@ -62,14 +64,7 @@ abstract class WatcherDaemonController extends DaemonController
         \Yii::trace('Daemon pid does not find.');
         if($job['enabled']) {
             \Yii::trace('Try to run daemon ' . $job['className']. '.');
-            $command_name = strtolower(
-                preg_replace_callback('/(?<!^)(?<![A-Z])[A-Z]{1}/',
-                    function ($matches) {
-                        return '-' . $matches[0];
-                    },
-                    str_replace('Controller', '',$job['className'])
-                )
-            );
+            $command_name = $this->getCommandNameBy($job['className']);
             //run daemon
             $pid = pcntl_fork();
             if ($pid == -1) {
@@ -77,7 +72,7 @@ abstract class WatcherDaemonController extends DaemonController
             } elseif (!$pid) {
                 \Yii::trace('Daemon '.$job['className'] .' running.');
             } else {
-                \Yii::$app->runAction("$command_name/index", ['demonize'=>1]);
+                \Yii::$app->runAction("$command_name", ['demonize' => 1]);
             }
 
         }
@@ -94,6 +89,23 @@ abstract class WatcherDaemonController extends DaemonController
     protected function defineJobs() {
         sleep($this->sleep);
         return $this->daemonsList;
+    }
+
+    protected function getCommandNameBy($className) {
+        $command = strtolower(
+            preg_replace_callback('/(?<!^)(?<![A-Z])[A-Z]{1}/',
+                function ($matches) {
+                    return '-' . $matches[0];
+                },
+                str_replace('Controller', '', $className)
+            )
+        );
+
+        if(!empty($this->daemonFolder)) {
+            $command = $this->daemonFolder . $command;
+        }
+
+        return $command . DIRECTORY_SEPARATOR . 'index';
     }
 
     /**
