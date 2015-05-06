@@ -56,7 +56,11 @@ abstract class WatcherDaemonController extends DaemonController
                     return true;
                 } else {
                     \Yii::warning('Daemon ' . $job['className']. ' running, but disabled in config. Send SIGTERM signal.');
-                    posix_kill($pid, SIGTERM);
+                    if(isset($job['hardKill']) && $job['hardKill']){
+                        posix_kill($pid, SIGKILL);
+                    } else {
+                        posix_kill($pid, SIGTERM);
+                    }
                     return true;
                 }
             }
