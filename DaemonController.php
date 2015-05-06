@@ -47,7 +47,7 @@ abstract class DaemonController extends Controller
     /**
      * @var $currentJobs [] array of running instances
      */
-    protected $currentJobs = [];
+    protected static $currentJobs = [];
 
     /**
      * @var int Memory limit for daemon, must bee less than php memory_limit
@@ -58,7 +58,7 @@ abstract class DaemonController extends Controller
     /**
      * @var int used for soft daemon stop, set 1 to stop
      */
-    private $stopFlag = 0;
+    private static $stopFlag = 0;
 
     /**
      * @var int Delay between task list checking
@@ -134,9 +134,11 @@ abstract class DaemonController extends Controller
                 fclose(STDIN);
                 fclose(STDOUT);
                 fclose(STDERR);
-                $this->STDIN = fopen('/dev/null', 'r');
-                $this->STDOUT = fopen('/dev/null', 'ab');
-                $this->STDERR = fopen('/dev/null', 'ab');
+                //reopen std streams to unused, local variables
+                //streams will not be closed
+                $stdIn = fopen('/dev/null', 'r');
+                $stdOut = fopen('/dev/null', 'ab');
+                $stdErr= fopen('/dev/null', 'ab');
             }
         }
         //run iterator
@@ -212,21 +214,21 @@ abstract class DaemonController extends Controller
         if (file_put_contents($this->getPidPath(), getmypid())) {
             $this->parentPID = getmypid();
             \Yii::trace('Daemon ' . $this->shortClassName() . ' pid ' . getmypid() . ' started.');
-            while (!$this->stopFlag && (memory_get_usage() < $this->memoryLimit)) {
+            while (!self::$stopFlag && (memory_get_usage() < $this->memoryLimit)) {
                 $this->trigger(self::EVENT_BEFORE_ITERATION);
                 $jobs = $this->defineJobs();
                 if ($jobs && count($jobs)) {
                     while (($job = $this->defineJobExtractor($jobs)) !== null) {
                         //if no free workers, wait
-                        if (count($this->currentJobs) >= $this->maxChildProcesses) {
+                        if (count(static::$currentJobs) >= $this->maxChildProcesses) {
                             \Yii::trace('Max child proccess is reached. Waiting...');
-                            while (count($this->currentJobs) >= $this->maxChildProcesses) {
+                            while (count(static::$currentJobs) >= $this->maxChildProcesses) {
                                 sleep(1);
                                 pcntl_signal_dispatch();
                             }
                             \Yii::trace(
                                 'Free workers found: ' .
-                                ($this->maxChildProcesses - count($this->currentJobs)) .
+                                ($this->maxChildProcesses - count(static::$currentJobs)) .
                                 ' worker(s). Delegate tasks.'
                             );
                         }
@@ -258,9 +260,9 @@ abstract class DaemonController extends Controller
     /**
      * Completes the process (soft)
      */
-    final public function stop()
+    final public static function stop()
     {
-        $this->stopFlag = 1;
+        self::$stopFlag = 1;
     }
 
     /**
@@ -275,7 +277,7 @@ abstract class DaemonController extends Controller
         switch ($signo) {
             case SIGTERM:
                 //shutdown
-                $this->stop();
+                self::stop();
                 break;
             case SIGHUP:
                 //restart, not implemented
@@ -288,8 +290,8 @@ abstract class DaemonController extends Controller
                     $pid = pcntl_waitpid(-1, $status, WNOHANG);
                 }
                 while ($pid > 0) {
-                    if ($pid && isset($this->currentJobs[$pid])) {
-                        unset($this->currentJobs[$pid]);
+                    if ($pid && isset(static::$currentJobs[$pid])) {
+                        unset(static::$currentJobs[$pid]);
                     }
                     $pid = pcntl_waitpid(-1, $status, WNOHANG);
                 }
@@ -312,7 +314,7 @@ abstract class DaemonController extends Controller
             if ($pid == -1) {
                 return false;
             } elseif ($pid) {
-                $this->currentJobs[$pid] = true;
+                static::$currentJobs[$pid] = true;
             } else {
                 //child process must die
                 $this->trigger(self::EVENT_BEFORE_JOB);
