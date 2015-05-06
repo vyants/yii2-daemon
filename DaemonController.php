@@ -260,7 +260,7 @@ abstract class DaemonController extends Controller
     /**
      * Completes the process (soft)
      */
-    final public static function stop()
+    public static function stop()
     {
         self::$stopFlag = 1;
     }
@@ -277,7 +277,7 @@ abstract class DaemonController extends Controller
         switch ($signo) {
             case SIGTERM:
                 //shutdown
-                self::stop();
+                static::stop();
                 break;
             case SIGHUP:
                 //restart, not implemented
