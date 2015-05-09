@@ -132,15 +132,15 @@ abstract class DaemonController extends Controller
             } else {
                 posix_setsid();
                 //close std streams (unlink console)
-                if(is_resource(STDIN) {
+                if (is_resource(STDIN)) {
                     fclose(STDIN);
                     $stdIn = fopen('/dev/null', 'r');
                 }
-                if(is_resource(STDOUT) {
+                if (is_resource(STDOUT)) {
                     fclose(STDOUT);
                     $stdOut = fopen('/dev/null', 'ab');
                 }
-                if(is_resource(STDERR) {
+                if (is_resource(STDERR)) {
                     fclose(STDERR);
                     $stdErr = fopen('/dev/null', 'ab');
                 }
