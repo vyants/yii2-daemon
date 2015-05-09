@@ -92,19 +92,15 @@ abstract class DaemonController extends Controller
     {
         $targets = \Yii::$app->getLog()->targets;
         foreach ($targets as $name => $target) {
-            if ($name != 'daemon') {
-                $target->enabled = false;
-            }
+            $target->enabled = false;
         }
-        if (!isset($targets['daemon'])) {
-            $config = [
-                'levels' => ['error', 'warning', 'trace', 'info'],
-                'logFile' => \Yii::getAlias($this->logDir) . DIRECTORY_SEPARATOR . $this->shortClassName() . '.log'
-            ];
-            $targets['daemon'] = new \yii\log\FileTarget($config);
-            \Yii::$app->getLog()->targets = $targets;
-            \Yii::$app->getLog()->init();
-        }
+        $config = [
+            'levels' => ['error', 'warning', 'trace', 'info'],
+            'logFile' => \Yii::getAlias($this->logDir) . DIRECTORY_SEPARATOR . $this->shortClassName() . '.log'
+        ];
+        $targets['daemon'] = new \yii\log\FileTarget($config);
+        \Yii::$app->getLog()->targets = $targets;
+        \Yii::$app->getLog()->init();
     }
 
     /**
@@ -374,6 +370,7 @@ abstract class DaemonController extends Controller
      */
     protected function renewConnections() {
         if(isset(\Yii::$app->db)) {
+            \Yii::$app->db->close();
             \Yii::$app->db->open();
         }
     }
