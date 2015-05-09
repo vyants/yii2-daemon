@@ -106,7 +106,7 @@ abstract class WatcherDaemonController extends DaemonController
         );
 
         if(!empty($this->daemonFolder)) {
-            $command = $this->daemonFolder . $command;
+            $command = $this->daemonFolder . DIRECTORY_SEPARATOR. $command;
         }
 
         return $command . DIRECTORY_SEPARATOR . 'index';
