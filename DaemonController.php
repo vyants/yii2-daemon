@@ -132,14 +132,18 @@ abstract class DaemonController extends Controller
             } else {
                 posix_setsid();
                 //close std streams (unlink console)
-                fclose(STDIN);
-                fclose(STDOUT);
-                fclose(STDERR);
-                //reopen std streams to unused, local variables
-                //streams will not be closed
-                $stdIn = fopen('/dev/null', 'r');
-                $stdOut = fopen('/dev/null', 'ab');
-                $stdErr = fopen('/dev/null', 'ab');
+                if(is_resource(STDIN) {
+                    fclose(STDIN);
+                    $stdIn = fopen('/dev/null', 'r');
+                }
+                if(is_resource(STDOUT) {
+                    fclose(STDOUT);
+                    $stdOut = fopen('/dev/null', 'ab');
+                }
+                if(is_resource(STDERR) {
+                    fclose(STDERR);
+                    $stdErr = fopen('/dev/null', 'ab');
+                }
             }
         }
         //run iterator
