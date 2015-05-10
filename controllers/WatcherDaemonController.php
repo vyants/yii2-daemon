@@ -51,7 +51,7 @@ abstract class WatcherDaemonController extends DaemonController
         if (file_exists($pidfile)) {
             $pid = file_get_contents($pidfile);
             if ($this->isProcessRunning($pid)) {
-                if (current($job)['enabled']) {
+                if ($job['enabled']) {
                     \Yii::trace('Daemon ' . $job['className']. ' running and working fine');
                     return true;
                 } else {
