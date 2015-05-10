@@ -143,7 +143,7 @@ abstract class DaemonController extends Controller
             }
         }
         //rename process
-        setproctitle($this->getProcessName());
+        cli_set_process_title($this->getProcessName());
         //run iterator
         return $this->loop();
     }
