@@ -142,8 +142,15 @@ abstract class DaemonController extends Controller
                 }
             }
         }
+        //rename process
+        setproctitle($this->getProcessName());
         //run iterator
         return $this->loop();
+    }
+    
+    protected function getProcessName()
+    {
+        return $this->shortClassName();
     }
 
     /**
