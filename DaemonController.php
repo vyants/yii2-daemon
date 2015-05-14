@@ -143,7 +143,17 @@ abstract class DaemonController extends Controller
             }
         }
         //rename process
-        cli_set_process_title($this->getProcessName());
+        if (version_compare(PHP_VERSION, '5.5.0') >= 0) {
+            cli_set_process_title($this->getProcessName());
+        } else {
+            if (function_exists('setproctitle')) {
+                setproctitle($this->getProcessName());
+            } else {
+                throw new NotSupportedException(
+                    "Can't find cli_set_process_title or setproctitle function"
+                );
+            }
+        }
         //run iterator
         return $this->loop();
     }
