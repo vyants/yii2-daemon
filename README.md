@@ -101,3 +101,13 @@ In your daemon you can override parent properties:
 * `$logDir` - dir where daemons logs is located
 * `$isMultiInstance` - this option allow daemon create self copy for each task. That is, the daemon can simultaneously perform multiple tasks. This is useful when one task requires some time and server resources allows perform many such task.
 * `$maxChildProcesses` - only if `$isMultiInstance=true`. The maximum number of daemons instances. If the maximum number is reached - the system waits until at least one child process to terminate.
+
+### Installing Proctitle on PHP < 5.5.0
+
+You will need proctitle extension on your server to be able to isntall yii2-daemon. For a debian 7 you can use these commands:
+
+```
+# pecl install channel://pecl.php.net/proctitle-0.1.2
+# echo "extension=proctitle.so" > /etc/php5/mods-available/proctitle.ini
+# php5enmod proctitle
+```
