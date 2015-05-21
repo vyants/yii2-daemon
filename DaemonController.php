@@ -69,6 +69,8 @@ abstract class DaemonController extends Controller
     protected $pidDir = "@runtime/daemons/pids";
     protected $logDir = "@runtime/daemons/logs";
 
+    private $shortName = '';
+
     /**
      * Init function
      */
@@ -82,6 +84,7 @@ abstract class DaemonController extends Controller
         pcntl_signal(SIGUSR1, ['vyants\daemon\DaemonController', 'signalHandler']);
         pcntl_signal(SIGCHLD, ['vyants\daemon\DaemonController', 'signalHandler']);
 
+        $this->shortName = $this->shortClassName();
         $this->initLogger();
     }
 
@@ -96,7 +99,11 @@ abstract class DaemonController extends Controller
         }
         $config = [
             'levels' => ['error', 'warning', 'trace', 'info'],
-            'logFile' => \Yii::getAlias($this->logDir) . DIRECTORY_SEPARATOR . $this->shortClassName() . '.log'
+            'logFile' => \Yii::getAlias($this->logDir) . DIRECTORY_SEPARATOR . $this->shortName . '.log',
+            'logVars'=>[],
+            'except' => [
+                'yii\db\*', // Don't include messages from db
+            ],
         ];
         $targets['daemon'] = new \yii\log\FileTarget($config);
         \Yii::$app->getLog()->targets = $targets;
@@ -157,10 +164,10 @@ abstract class DaemonController extends Controller
         //run iterator
         return $this->loop();
     }
-    
+
     protected function getProcessName()
     {
-        return $this->shortClassName();
+        return $this->shortName;
     }
 
     /**
@@ -228,7 +235,7 @@ abstract class DaemonController extends Controller
     {
         if (file_put_contents($this->getPidPath(), getmypid())) {
             $this->parentPID = getmypid();
-            \Yii::trace('Daemon ' . $this->shortClassName() . ' pid ' . getmypid() . ' started.');
+            \Yii::trace('Daemon ' . $this->shortName . ' pid ' . getmypid() . ' started.');
             while (!self::$stopFlag && (memory_get_usage() < $this->memoryLimit)) {
                 $this->trigger(self::EVENT_BEFORE_ITERATION);
                 $this->renewConnections();
@@ -237,7 +244,7 @@ abstract class DaemonController extends Controller
                     while (($job = $this->defineJobExtractor($jobs)) !== null) {
                         //if no free workers, wait
                         if (count(static::$currentJobs) >= $this->maxChildProcesses) {
-                            \Yii::trace('Max child proccess is reached. Waiting...');
+                            \Yii::trace('Reached maximum number of child processes. Waiting...');
                             while (count(static::$currentJobs) >= $this->maxChildProcesses) {
                                 sleep(1);
                                 pcntl_signal_dispatch();
@@ -258,15 +265,18 @@ abstract class DaemonController extends Controller
                 $this->trigger(self::EVENT_AFTER_ITERATION);
             }
             if (memory_get_usage() < $this->memoryLimit) {
-                \Yii::warning('Daemon ' . $this->shortClassName() . ' pid ' .
-                    getmypid() . ' is reached memory limit ' . $this->memoryLimit .
-                    ', memory usage: ' . memory_get_usage()
-                );
+                \Yii::trace('Daemon ' . $this->shortName . ' pid ' .
+                    getmypid() . ' used ' . memory_get_usage() . ' bytes on ' . $this->memoryLimit .
+                    ' bytes allowed by memory limit');
             }
 
-            \Yii::info('Daemon ' . $this->shortClassName() . ' pid ' . getmypid() . ' is stopped now.');
+            \Yii::info('Daemon ' . $this->shortClassName() . ' pid ' . getmypid() . ' is stopped.');
 
-            unlink($this->getPidPath());
+            if (file_exists($this->getPidPath())) {
+                @unlink($this->getPidPath());
+            } else {
+                \Yii::error('Can\'t unlink pid file ' . $this->getPidPath());
+            }
 
             return self::EXIT_CODE_NORMAL;
         }
@@ -425,7 +435,7 @@ abstract class DaemonController extends Controller
         if (!file_exists($dir)) {
             mkdir($dir, 0744, true);
         }
-        return $dir . DIRECTORY_SEPARATOR . $this->shortClassName();
+        return $dir . DIRECTORY_SEPARATOR . $this->shortName;
     }
 
 }

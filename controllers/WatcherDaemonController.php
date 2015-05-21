@@ -31,7 +31,7 @@ abstract class WatcherDaemonController extends DaemonController
             $pid = file_get_contents($pidFile);
             exec("ps -p $pid", $output);
             if (count($output) > 1) {
-                $this->halt(self::EXIT_CODE_ERROR, 'Another Watcher already running.');
+                $this->halt(self::EXIT_CODE_ERROR, 'Another Watcher is already running.');
             }
         }
         parent::init();
@@ -65,16 +65,16 @@ abstract class WatcherDaemonController extends DaemonController
                 }
             }
         }
-        \Yii::trace('Daemon pid does not find.');
+        \Yii::trace('Daemon pid not found.');
         if($job['enabled']) {
             \Yii::trace('Try to run daemon ' . $job['className']. '.');
             $command_name = $this->getCommandNameBy($job['className']);
             //run daemon
             $pid = pcntl_fork();
             if ($pid == -1) {
-                $this->halt(self::EXIT_CODE_ERROR, 'pcntl_fork() rise error');
+                $this->halt(self::EXIT_CODE_ERROR, 'pcntl_fork() returned error');
             } elseif (!$pid) {
-                \Yii::trace('Daemon '.$job['className'] .' running.');
+                \Yii::trace('Daemon '.$job['className'] .' is running.');
             } else {
                 \Yii::$app->runAction("$command_name", ['demonize' => 1]);
             }

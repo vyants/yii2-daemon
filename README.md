@@ -102,6 +102,37 @@ In your daemon you can override parent properties:
 * `$isMultiInstance` - this option allow daemon create self copy for each task. That is, the daemon can simultaneously perform multiple tasks. This is useful when one task requires some time and server resources allows perform many such task.
 * `$maxChildProcesses` - only if `$isMultiInstance=true`. The maximum number of daemons instances. If the maximum number is reached - the system waits until at least one child process to terminate.
 
+If you want to change logging preferences, you may override the function initLogger. Example:
+
+```
+    /**
+     * Adjusting logger. You can override it.
+     */
+    protected function initLogger()
+    {
+
+        $targets = \Yii::$app->getLog()->targets;
+        foreach ($targets as $name => $target) {
+            $target->enabled = false;
+        }
+        $config = [
+            'levels' => ['error', 'warning', 'trace', 'info'],
+            'logFile' => \Yii::getAlias($this->logDir) . DIRECTORY_SEPARATOR . $this->shortClassName() . '.log',
+            'logVars'=>[], // Don't log all variables
+            'exportInterval'=>1, // Write each message to disk
+            'except' => [
+                'yii\db\*', // Don't include messages from db
+            ],
+        ];
+        $targets['daemon'] = new \yii\log\FileTarget($config);
+        \Yii::$app->getLog()->targets = $targets;
+        \Yii::$app->getLog()->init();
+        // Flush each message
+        \Yii::$app->getLog()->flushInterval = 1;
+    }
+```
+    
+    
 ### Installing Proctitle on PHP < 5.5.0
 
 You will need proctitle extension on your server to be able to isntall yii2-daemon. For a debian 7 you can use these commands:
