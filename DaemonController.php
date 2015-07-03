@@ -85,7 +85,6 @@ abstract class DaemonController extends Controller
         pcntl_signal(SIGCHLD, ['vyants\daemon\DaemonController', 'signalHandler']);
 
         $this->shortName = $this->shortClassName();
-        $this->initLogger();
     }
 
     /**
@@ -180,6 +179,7 @@ abstract class DaemonController extends Controller
     public function beforeAction($action)
     {
         if (parent::beforeAction($action)) {
+            $this->initLogger();
             if ($action->id != "index") {
                 throw new NotSupportedException(
                     "Only index action allowed in daemons. So, don't create and call another"
