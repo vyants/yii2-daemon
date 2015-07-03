@@ -78,7 +78,12 @@ abstract class WatcherDaemonController extends DaemonController
             } elseif (!$pid) {
                 \Yii::trace('Daemon '.$job['className'] .' is running.');
             } else {
-                \Yii::$app->runAction("$command_name", ['demonize' => 1]);
+                $this->halt(
+                    (0 === \Yii::$app->runAction("$command_name", ['demonize' => 1])
+                        ? self::EXIT_CODE_NORMAL
+                        : self::EXIT_CODE_ERROR
+                    )
+                );
             }
 
         }
