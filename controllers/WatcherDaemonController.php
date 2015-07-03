@@ -69,6 +69,8 @@ abstract class WatcherDaemonController extends DaemonController
         if($job['enabled']) {
             \Yii::trace('Try to run daemon ' . $job['className']. '.');
             $command_name = $this->getCommandNameBy($job['className']);
+            //flush log before fork
+            Yii::$app->getLog()->flush();
             //run daemon
             $pid = pcntl_fork();
             if ($pid == -1) {
