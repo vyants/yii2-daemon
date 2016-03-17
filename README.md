@@ -91,6 +91,7 @@ class {NAME}DaemonController extends DaemonController
 ```
 2. Implement logic. 
 3. Add new daemon to daemons list in watcher.
+
 ### Working with RabbitMQ (this example needs "videlalvaro/php-amqplib" package)
 ```
 <?php
