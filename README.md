@@ -91,7 +91,140 @@ class {NAME}DaemonController extends DaemonController
 ```
 2. Implement logic. 
 3. Add new daemon to daemons list in watcher.
+### Working with RabbitMQ (this example needs "videlalvaro/php-amqplib" package)
+```
+<?php
 
+namespace console\controllers\daemons;
+
+use console\components\controllers\BaseDaemonController;
+use PhpAmqpLib\Channel\AMQPChannel;
+use PhpAmqpLib\Connection\AMQPStreamConnection;
+use PhpAmqpLib\Message\AMQPMessage;
+
+/**
+ * Class SomeRabbitQueueController
+ */
+class SomeRabbitQueueController extends BaseDaemonController
+{
+    /**
+     *  @var $connection AMQPStreamConnection
+     */
+    protected $connection;
+
+    /**
+     *  @var $connection AMQPChannel
+     */
+    protected $channel;
+
+
+    /**
+     * @return array|bool
+     */
+    protected function defineJobs()
+    {
+        $channel = $this->getQueue();
+        while (count($channel->callbacks)) {
+            try {
+                $channel->wait(null, true, 5);
+            } catch (\PhpAmqpLib\Exception\AMQPTimeoutException $timeout) {
+
+            } catch (\PhpAmqpLib\Exception\AMQPRuntimeException $runtime) {
+                \Yii::error($runtime->getMessage());
+                $this->channel = null;
+                $this->connection = null;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @param AMQPMessage $job
+     * @return bool
+     * @throws NotSupportedException
+     * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+     */
+    protected function doJob($job)
+    {
+        $result = false;
+
+        //do somethink here and set $result
+
+        if ($result) {
+            $this->ask($job);
+        } else {
+            $this->nask($job);
+        }
+        return $result;
+    }
+
+
+    /**
+     * @return AMQPChannel
+     * @throws InvalidParamException
+     */
+    protected function getQueue()
+    {
+        if ($this->channel == null) {
+            if ($this->connection == null) {
+                if (isset(\Yii::$app->params['rabbit'])) {
+                    $rabbit = \Yii::$app->params['rabbit'];
+                } else {
+                    throw new InvalidParamException('Bad config RabbitMQ');
+                }
+                $this->connection = new AMQPStreamConnection($rabbit['host'], $rabbit['port'], $rabbit['user'], $rabbit['password']);
+            }
+
+            $this->channel = $this->connection->channel();
+
+            $this->channel->exchange_declare($this->exchange, $this->type, false, true, false);
+
+            $args = [];
+
+            if ($this->dlx) {
+                $args['x-dead-letter-exchange'] = ['S', $this->exchange];
+                $args['x-dead-letter-routing-key'] = ['S',$this->dlx];
+            }
+            if ($this->max_length) {
+                $args['x-max-length'] = ['I', $this->max_length];
+            }
+            if ($this->max_bytes) {
+                $args['x-max-length-bytes'] = ['I', $this->max_bytes];
+            }
+            if ($this->max_priority) {
+                $args['x-max-priority'] = ['I', $this->max_priority];
+            }
+
+            list($queue_name, ,) = $this->channel->queue_declare($this->queue_name, false, true, false, false, false, $args);
+
+            foreach ($this->binding_keys as $binding_key) {
+                $this->channel->queue_bind($queue_name, $this->exchange, $binding_key);
+            }
+
+            $this->channel->basic_consume($queue_name, '', false, false, false, false, [$this, 'doJob']);
+        }
+
+        return $this->channel;
+    }
+
+
+    /**
+     * @param $job
+     */
+    protected function ask($job)
+    {
+        $job->delivery_info['channel']->basic_ack($job->delivery_info['delivery_tag']);
+    }
+
+    /**
+     * @param $job
+     */
+    protected function nask($job)
+    {
+        $job->delivery_info['channel']->basic_nack($job->delivery_info['delivery_tag']);
+    }
+}
+```
 ### Daemon settings (propeties)
 In your daemon you can override parent properties:
 * `$demonize` - if 0 daemon is not running as daemon, only as simple console application. It's needs for debug.
