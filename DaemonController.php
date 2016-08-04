@@ -268,7 +268,7 @@ abstract class DaemonController extends Controller
                 $this->trigger(self::EVENT_BEFORE_ITERATION);
                 $this->renewConnections();
                 $jobs = $this->defineJobs();
-                if ($jobs && count($jobs)) {
+                if ($jobs && !empty($jobs)) {
                     while (($job = $this->defineJobExtractor($jobs)) !== null) {
                         //if no free workers, wait
                         if ($this->isMultiInstance && (count(static::$currentJobs) >= $this->maxChildProcesses)) {
