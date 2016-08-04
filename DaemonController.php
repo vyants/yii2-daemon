@@ -53,7 +53,7 @@ abstract class DaemonController extends Controller
      * @var int Memory limit for daemon, must bee less than php memory_limit
      * @default 32M
      */
-    private $memoryLimit = 268435456;
+    protected $memoryLimit = 268435456;
 
     /**
      * @var boolean used for soft daemon stop, set 1 to stop
@@ -95,7 +95,7 @@ abstract class DaemonController extends Controller
         }
         $config = [
             'levels' => ['error', 'warning', 'trace', 'info'],
-            'logFile' => \Yii::getAlias($this->logDir) . DIRECTORY_SEPARATOR . $this->get . '.log',
+            'logFile' => \Yii::getAlias($this->logDir) . DIRECTORY_SEPARATOR . $this->getProcessName() . '.log',
             'logVars'=>[],
             'except' => [
                 'yii\db\*', // Don't include messages from db
