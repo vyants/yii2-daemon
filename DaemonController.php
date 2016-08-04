@@ -56,9 +56,9 @@ abstract class DaemonController extends Controller
     private $memoryLimit = 268435456;
 
     /**
-     * @var int used for soft daemon stop, set 1 to stop
+     * @var boolean used for soft daemon stop, set 1 to stop
      */
-    private static $stopFlag = 0;
+    private static $stopFlag = false;
 
     /**
      * @var int Delay between task list checking
@@ -67,9 +67,8 @@ abstract class DaemonController extends Controller
     protected $sleep = 5;
 
     protected $pidDir = "@runtime/daemons/pids";
-    protected $logDir = "@runtime/daemons/logs";
 
-    private $shortName = '';
+    protected $logDir = "@runtime/daemons/logs";
 
     /**
      * Init function
@@ -83,8 +82,6 @@ abstract class DaemonController extends Controller
         pcntl_signal(SIGHUP, ['vyants\daemon\DaemonController', 'signalHandler']);
         pcntl_signal(SIGUSR1, ['vyants\daemon\DaemonController', 'signalHandler']);
         pcntl_signal(SIGCHLD, ['vyants\daemon\DaemonController', 'signalHandler']);
-
-        $this->shortName = $this->shortClassName();
     }
 
     /**
@@ -98,7 +95,7 @@ abstract class DaemonController extends Controller
         }
         $config = [
             'levels' => ['error', 'warning', 'trace', 'info'],
-            'logFile' => \Yii::getAlias($this->logDir) . DIRECTORY_SEPARATOR . $this->shortName . '.log',
+            'logFile' => \Yii::getAlias($this->logDir) . DIRECTORY_SEPARATOR . $this->get . '.log',
             'logVars'=>[],
             'except' => [
                 'yii\db\*', // Don't include messages from db
@@ -117,11 +114,10 @@ abstract class DaemonController extends Controller
      */
     abstract protected function doJob($job);
 
-
     /**
      * Base action, you can\t override or create another actions
-     *
-     * @return boolean
+     * @return bool
+     * @throws NotSupportedException
      */
     final public function actionIndex()
     {
@@ -133,21 +129,19 @@ abstract class DaemonController extends Controller
                 $this->halt(self::EXIT_CODE_NORMAL);
             } else {
                 posix_setsid();
-                //close std streams (unlink console)
-                if (is_resource(STDIN)) {
-                    fclose(STDIN);
-                    $stdIn = fopen('/dev/null', 'r');
-                }
-                if (is_resource(STDOUT)) {
-                    fclose(STDOUT);
-                    $stdOut = fopen('/dev/null', 'ab');
-                }
-                if (is_resource(STDERR)) {
-                    fclose(STDERR);
-                    $stdErr = fopen('/dev/null', 'ab');
-                }
+                $this->closeStdStreams();
             }
         }
+        $this->changeProcessName();
+        //run loop
+        return $this->loop();
+    }
+
+    /**
+     * Set new process name
+     */
+    protected function changeProcessName()
+    {
         //rename process
         if (version_compare(PHP_VERSION, '5.5.0') >= 0) {
             cli_set_process_title($this->getProcessName());
@@ -155,18 +149,28 @@ abstract class DaemonController extends Controller
             if (function_exists('setproctitle')) {
                 setproctitle($this->getProcessName());
             } else {
-                throw new NotSupportedException(
-                    "Can't find cli_set_process_title or setproctitle function"
-                );
+                \Yii::error('Can\'t find cli_set_process_title or setproctitle function');
             }
         }
-        //run iterator
-        return $this->loop();
     }
 
-    protected function getProcessName()
+    /**
+     * Close std streams and open to /dev/null
+     */
+    protected function closeStdStreams()
     {
-        return $this->shortName;
+        if (is_resource(STDIN)) {
+            fclose(STDIN);
+            $stdIn = fopen('/dev/null', 'r');
+        }
+        if (is_resource(STDOUT)) {
+            fclose(STDOUT);
+            $stdOut = fopen('/dev/null', 'ab');
+        }
+        if (is_resource(STDERR)) {
+            fclose(STDERR);
+            $stdErr = fopen('/dev/null', 'ab');
+        }
     }
 
     /**
@@ -227,7 +231,7 @@ abstract class DaemonController extends Controller
     }
 
     /**
-     * Main iterator
+     * Main Loop
      *
      * * @return boolean 0|1
      */
@@ -235,15 +239,21 @@ abstract class DaemonController extends Controller
     {
         if (file_put_contents($this->getPidPath(), getmypid())) {
             $this->parentPID = getmypid();
-            \Yii::trace('Daemon ' . $this->shortName . ' pid ' . getmypid() . ' started.');
-            while (!self::$stopFlag && (memory_get_usage() < $this->memoryLimit)) {
+            \Yii::trace('Daemon ' . $this->getProcessName() . ' pid ' . getmypid() . ' started.');
+            while (!self::$stopFlag) {
+                if (memory_get_usage() < $this->memoryLimit) {
+                    \Yii::trace('Daemon ' . $this->getProcessName() . ' pid ' .
+                        getmypid() . ' used ' . memory_get_usage() . ' bytes on ' . $this->memoryLimit .
+                        ' bytes allowed by memory limit');
+                    break;
+                }
                 $this->trigger(self::EVENT_BEFORE_ITERATION);
                 $this->renewConnections();
                 $jobs = $this->defineJobs();
                 if ($jobs && count($jobs)) {
                     while (($job = $this->defineJobExtractor($jobs)) !== null) {
                         //if no free workers, wait
-                        if (count(static::$currentJobs) >= $this->maxChildProcesses) {
+                        if ($this->isMultiInstance && (count(static::$currentJobs) >= $this->maxChildProcesses)) {
                             \Yii::trace('Reached maximum number of child processes. Waiting...');
                             while (count(static::$currentJobs) >= $this->maxChildProcesses) {
                                 sleep(1);
@@ -264,32 +274,19 @@ abstract class DaemonController extends Controller
                 pcntl_signal_dispatch();
                 $this->trigger(self::EVENT_AFTER_ITERATION);
             }
-            if (memory_get_usage() < $this->memoryLimit) {
-                \Yii::trace('Daemon ' . $this->shortName . ' pid ' .
-                    getmypid() . ' used ' . memory_get_usage() . ' bytes on ' . $this->memoryLimit .
-                    ' bytes allowed by memory limit');
-            }
 
-            \Yii::info('Daemon ' . $this->shortClassName() . ' pid ' . getmypid() . ' is stopped.');
+            \Yii::info('Daemon ' . $this->getProcessName() . ' pid ' . getmypid() . ' is stopped.');
 
             if (file_exists($this->getPidPath())) {
                 @unlink($this->getPidPath());
             } else {
                 \Yii::error('Can\'t unlink pid file ' . $this->getPidPath());
             }
-
             return self::EXIT_CODE_NORMAL;
         }
         $this->halt(self::EXIT_CODE_ERROR, 'Can\'t create pid file ' . $this->getPidPath());
     }
 
-    /**
-     * Completes the process (soft)
-     */
-    public static function stop()
-    {
-        self::$stopFlag = 1;
-    }
 
     /**
      * PCNTL signals handler
@@ -298,12 +295,12 @@ abstract class DaemonController extends Controller
      * @param null $pid
      * @param null $status
      */
-    final function signalHandler($signo, $pid = null, $status = null)
+    final static function signalHandler($signo, $pid = null, $status = null)
     {
         switch ($signo) {
             case SIGTERM:
                 //shutdown
-                static::stop();
+                self::$stopFlag = true;
                 break;
             case SIGHUP:
                 //restart, not implemented
@@ -334,27 +331,25 @@ abstract class DaemonController extends Controller
      */
     final public function runDaemon($job)
     {
-
         if ($this->isMultiInstance) {
             $pid = pcntl_fork();
             if ($pid == -1) {
                 return false;
             } elseif ($pid) {
                 static::$currentJobs[$pid] = true;
+                return true;
             } else {
                 $this->renewConnections();
                 //child process must die
                 $this->trigger(self::EVENT_BEFORE_JOB);
-                if ($this->doJob($job)) {
-                    $this->trigger(self::EVENT_AFTER_JOB);
+                $status = $this->doJob($job);
+                $this->trigger(self::EVENT_AFTER_JOB);
+                if ($status) {
                     $this->halt(self::EXIT_CODE_NORMAL);
                 } else {
-                    $this->trigger(self::EVENT_AFTER_JOB);
                     $this->halt(self::EXIT_CODE_ERROR, 'Child process #' . $pid . ' return error.');
                 }
             }
-
-            return true;
         } else {
             $this->trigger(self::EVENT_BEFORE_JOB);
             $status = $this->doJob($job);
@@ -367,8 +362,8 @@ abstract class DaemonController extends Controller
     /**
      * Stop process and show or write message
      *
-     * @param $code int код завершения -1|0|1
-     * @param $message string сообщение
+     * @param $code int -1|0|1
+     * @param $message string
      */
     protected function halt($code, $message = null)
     {
@@ -413,29 +408,59 @@ abstract class DaemonController extends Controller
         $this->stdout($out . $message . "\n");
     }
 
+
     /**
-     * Get classname without namespace
+     * @param string $daemon
      *
      * @return string
      */
-    public function shortClassName()
-    {
-        $classname = $this->className();
-
-        if (preg_match('@\\\\([\w]+)$@', $classname, $matches)) {
-            $classname = $matches[1];
-        }
-
-        return $classname;
-    }
-
-    public function getPidPath()
+    public function getPidPath($daemon = null)
     {
         $dir = \Yii::getAlias($this->pidDir);
         if (!file_exists($dir)) {
             mkdir($dir, 0744, true);
         }
-        return $dir . DIRECTORY_SEPARATOR . $this->shortName;
+
+        if(is_null($daemon)) {
+            $daemon = $this->getProcessName();
+        }
+
+        return $dir . DIRECTORY_SEPARATOR . $daemon;
     }
 
+    /**
+     * @return string
+     */
+    public function getProcessName()
+    {
+        return str_replace(['/index', '/'], ['', '.'], \Yii::$app->requestedRoute);
+    }
+
+    /**
+     *  If in daemon mode - no write to console
+     * @param string $string
+     * @return bool|int
+     */
+    public function stdout($string)
+    {
+        if (!$this->demonize && is_resource(STDOUT)) {
+            return parent::stdout($string);
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * If in daemon mode - no write to console
+     * @param string $string
+     * @return int
+     */
+    public function stderr($string)
+    {
+        if (!$this->demonize && is_resource(\STDERR)) {
+            return parent::stderr($string);
+        } else {
+            return false;
+        }
+    }
 }
