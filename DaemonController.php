@@ -83,11 +83,11 @@ abstract class DaemonController extends Controller
         parent::init();
 
         //set PCNTL signal handlers
-        pcntl_signal(SIGTERM, ['vyants\daemon\DaemonController', 'signalHandler']);
-        pcntl_signal(SIGINT, ['vyants\daemon\DaemonController', 'signalHandler']);
-        pcntl_signal(SIGHUP, ['vyants\daemon\DaemonController', 'signalHandler']);
-        pcntl_signal(SIGUSR1, ['vyants\daemon\DaemonController', 'signalHandler']);
-        pcntl_signal(SIGCHLD, ['vyants\daemon\DaemonController', 'signalHandler']);
+        pcntl_signal(SIGTERM, ['pamkil\daemon\DaemonController', 'signalHandler']);
+        pcntl_signal(SIGINT, ['pamkil\daemon\DaemonController', 'signalHandler']);
+        pcntl_signal(SIGHUP, ['pamkil\daemon\DaemonController', 'signalHandler']);
+        pcntl_signal(SIGUSR1, ['pamkil\daemon\DaemonController', 'signalHandler']);
+        pcntl_signal(SIGCHLD, ['pamkil\daemon\DaemonController', 'signalHandler']);
     }
 
     function __destruct()
