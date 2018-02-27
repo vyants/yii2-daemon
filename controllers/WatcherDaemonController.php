@@ -1,8 +1,8 @@
 <?php
 
-namespace vyants\daemon\controllers;
+namespace pamkil\daemon\controllers;
 
-use vyants\daemon\DaemonController;
+use pamkil\daemon\DaemonController;
 use yii\console\ExitCode;
 
 /**
