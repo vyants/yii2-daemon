@@ -1,5 +1,5 @@
 {
-    "name": "vyants/yii2-daemon",
+    "name": "pamkil/yii2-daemon",
     "description": "Extension provides functionality for simple daemons creation and control",
     "type": "yii2-extension",
     "keywords": ["yii2","extension", "daemon"],
@@ -17,7 +17,7 @@
     },
     "autoload": {
         "psr-4": {
-            "vyants\\daemon\\": ""
+            "pamkil\\daemon\\": ""
         }
     }
 }

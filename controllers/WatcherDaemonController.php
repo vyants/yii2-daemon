@@ -1,8 +1,9 @@
 <?php
 
-namespace vyants\daemon\controllers;
+namespace pamkil\daemon\controllers;
 
-use vyants\daemon\DaemonController;
+use pamkil\daemon\DaemonController;
+use yii\console\ExitCode;
 
 /**
  * watcher-daemon - check another daemons and run it if need
@@ -23,12 +24,14 @@ abstract class WatcherDaemonController extends DaemonController
 
     /**
      * Prevent double start
+     *
+     * @throws \yii\base\ExitException
      */
     public function init()
     {
         $pid_file = $this->getPidPath();
         if (file_exists($pid_file) && ($pid = file_get_contents($pid_file)) && file_exists("/proc/$pid")) {
-            $this->halt(self::EXIT_CODE_ERROR, 'Another Watcher is already running.');
+            $this->halt(ExitCode::UNSPECIFIED_ERROR, 'Another Watcher is already running.');
         }
         parent::init();
     }
@@ -39,17 +42,18 @@ abstract class WatcherDaemonController extends DaemonController
      * @param $job array
      *
      * @return boolean
+     * @throws \yii\base\ExitException
      */
     protected function doJob($job)
     {
         $pid_file = $this->getPidPath($job['daemon']);
 
-        \Yii::trace('Check daemon ' . $job['daemon']);
+        \Yii::debug('Check daemon ' . $job['daemon']);
         if (file_exists($pid_file)) {
             $pid = file_get_contents($pid_file);
             if ($this->isProcessRunning($pid)) {
                 if ($job['enabled']) {
-                    \Yii::trace('Daemon ' . $job['daemon'] . ' running and working fine');
+                    \Yii::debug('Daemon ' . $job['daemon'] . ' running and working fine');
 
                     return true;
                 } else {
@@ -66,14 +70,14 @@ abstract class WatcherDaemonController extends DaemonController
         }
         \Yii::error('Daemon pid not found.');
         if ($job['enabled']) {
-            \Yii::trace('Try to run daemon ' . $job['daemon'] . '.');
+            \Yii::debug('Try to run daemon ' . $job['daemon'] . '.');
             $command_name = $job['daemon'] . DIRECTORY_SEPARATOR . 'index';
             //flush log before fork
             $this->flushLog(true);
             //run daemon
             $pid = pcntl_fork();
             if ($pid === -1) {
-                $this->halt(self::EXIT_CODE_ERROR, 'pcntl_fork() returned error');
+                $this->halt(ExitCode::UNSPECIFIED_ERROR, 'pcntl_fork() returned error');
             } elseif ($pid === 0) {
                 $this->cleanLog();
                 \Yii::$app->requestedRoute = $command_name;
@@ -81,10 +85,10 @@ abstract class WatcherDaemonController extends DaemonController
                 $this->halt(0);
             } else {
                 $this->initLogger();
-                \Yii::trace('Daemon ' . $job['daemon'] . ' is running with pid ' . $pid);
+                \Yii::debug('Daemon ' . $job['daemon'] . ' is running with pid ' . $pid);
             }
         }
-        \Yii::trace('Daemon ' . $job['daemon'] . ' is checked.');
+        \Yii::debug('Daemon ' . $job['daemon'] . ' is checked.');
 
         return true;
     }
