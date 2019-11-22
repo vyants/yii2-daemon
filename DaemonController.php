@@ -318,11 +318,11 @@ abstract class DaemonController extends Controller
     /**
      * PCNTL signals handler
      *
-     * @param $signo
-     * @param null $pid
+     * @param int   $signo
+     * @param array $siginfo
      * @param null $status
      */
-    final static function signalHandler($signo, $pid = null, $status = null)
+    final static function signalHandler($signo, $siginfo = [], $status = null)
     {
         switch ($signo) {
             case SIGINT:
@@ -337,6 +337,7 @@ abstract class DaemonController extends Controller
                 //user signal, not implemented
                 break;
             case SIGCHLD:
+                $pid = $siginfo['pid'] ?? null;
                 if (!$pid) {
                     $pid = pcntl_waitpid(-1, $status, WNOHANG);
                 }
